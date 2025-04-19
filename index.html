@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Prompt Tester</title>
+    <style>
+      
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #4285F4;
+        }
+
+        textarea {
+            width: 100%;
+            min-width: 100%;
+            max-width: 100%;
+            height: 120px;
+            min-height: 120px;
+            max-height: 90%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #3367D6;
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+        }
+        .loading {
+            color: #555;
+            font-style: italic;
+        }
+        .error {
+            color: #d32f2f;
+            background-color: #fde0e0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .text-response {
+            white-space: pre-wrap;       /* Preserve whitespace and wrap text */
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }
+
+        .text-response br {
+            display: block;       
+            content: "";      
+            margin-bottom: 0.5em;
+        }
+
+        .text-response strong {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .text-response ul {
+            margin-left: 20px;
+            padding-left: 0;
+            list-style-type: none;
+        }
+
+        .text-response li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 0.3em;
+        }
+
+        .text-response li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #4285F4;
+        }
+      
+    </style>
+</head>
+<body>
+    <h1>Gemini Prompt Test Place</h1>
+    
+    <div>
+        <label for="prompt">Enter your prompt:</label>
+        <textarea id="prompt" placeholder="Type your prompt for Gemini here..."></textarea>
+    </div>
+
+    <div>
+      <label for="generate-code-switch">Generate and execute code</label>
+      <input type="checkbox" id="generate-code-switch">
+    </div>
+
+    <button id="submit">Run Prompt</button>
+    
+    <h2>Result:</h2>
+    <div id="result">Results will appear here...</div>
+    
+    <script>
+
+      function formatText(text) {
+          if (typeof text !== 'string') return text;
+          
+          // Convert \n to <br> for line breaks
+          let formatted = text.replace(/\n/g, '<br>');
+          
+          // Format bullet points (convert * to • and add proper spacing)
+          formatted = formatted.replace(/\*\s+(.+?)\n/g, '• $1<br>');
+          
+          // Format bold text (**text** to <strong>text</strong>)
+          formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+          
+          return formatted;
+      }
+
+      document.getElementById('submit').addEventListener('click', function() {
+          const prompt = document.getElementById('prompt').value;
+          const resultDiv = document.getElementById('result');
+          
+          if (!prompt.trim()) {
+              resultDiv.innerHTML = '<div class="error">Please enter a prompt</div>';
+              return;
+          }
+          
+          resultDiv.innerHTML = '<div class="loading">Processing your request with Gemini...</div>';
+
+          if (document.getElementById('generate-code-switch').value === true){         //checkbox that toggles between asking gemini regular qn vs asking gemini to generate code
+             google.script.run
+              .withSuccessHandler(function(response) {
+                  displayResult(response);
+              })
+              .withFailureHandler(function(error) {
+                  resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+              })
+              .runGeminiCode(prompt);
+          } else{
+            google.script.run
+              .withSuccessHandler(function(response) {
+                  displayResult(response);
+              })
+              .withFailureHandler(function(error) {
+                  resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+              })
+              .askGemini(prompt);
+          }
+      });
+        
+      function displayResult(response) {
+        console.log(response);                                          //if not parsed correctly, can check console for actual response
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = '';
+        try {
+            let data = response;
+
+            if (data.text) {
+                resultDiv.innerHTML = `<div class="text-response">${formatText(data.text)}</div>`;
+            } 
+            else if (data.subject && data.summary) {
+                const summaryText = typeof data.summary === 'object' ? 
+                    data.summary.text || JSON.stringify(data.summary, null, 2) : 
+                    data.summary;
+                    
+                resultDiv.innerHTML = `
+                    <h3>${formatText(data.subject)}</h3>
+                    <div>${formatText(summaryText)}</div>
+                `;
+            }
+            else if(Array.isArray(data)){
+              for (const element of data){
+                if ( Object.keys(data).length ){
+                  for (const key of Object.keys(data)){
+                    const value = data[key];
+                    resultDiv.innerHTML += `
+                        <h3>${formatText(key)}</h3>
+                        <div>${formatText(value)}</div>
+                    `;
+                  }
+                } else{
+                  resultDiv.innerHTML += `
+                      <div>${formatText(element)}</div>
+                  `;
+                }
+              }
+            }
+            else if (Object.keys(data).length > 0 && data.success === undefined){
+              for (const key of Object.keys(data)){
+                const value = data[key];
+                resultDiv.innerHTML += `
+                    <h3>${formatText(key)}</h3>
+                    <div>${formatText(value)}</div>
+                `;
+              }
+            }
+            else if (data.success !== undefined) {
+                if (data.success) {
+                    resultDiv.innerHTML = `<div>${data.text.replace(/\n/g, '<br>')}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                }
+            }
+
+            else {
+                // show the whole response as JSON as fallback
+                resultDiv.innerHTML = `
+                    <details>
+                        <summary>Raw Response</summary>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </details>
+                `;
+            }
+        } catch (e) {
+            resultDiv.innerHTML = `
+                <div class="error">Error displaying results: ${e.message}</div>
+                <div>Original response: ${typeof response === 'string' ? response : JSON.stringify(response)}</div>
+            `;
+        }
+      }
+      
+    </script>
+</body>
+</html>
